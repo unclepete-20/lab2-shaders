@@ -9,7 +9,7 @@ class Render(object):
     def __init__(self, width, height):
         self.width = width
         self.height = height
-        self.clearColor = color_select(0, 0, 0)
+        self.clearColor = color_select(255, 255, 255)
         # Initializes the window on create
         self.glCreateWindow()
         self.vertex_buffer_object = []
