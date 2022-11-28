@@ -1,8 +1,9 @@
 from bmp_renderer import *
 from lib import *
-
-pi =3.1416
                         
+'''
+SR6 CAMERAS
+'''
 
 r = Render(500, 500)
 
