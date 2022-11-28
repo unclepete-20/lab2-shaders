@@ -1,428 +1,392 @@
-'''
-@author Pedro Pablo Arriola Jimenez (20188)
-@filename bmp_renderer.py
-@description: BMP file renderer that works using concepts related
-to framebuffers and low level code such as bytes.
-'''
-
-import struct
-from Obj import Obj
-from Vector import V3
-
-
-# Functions that will be needed to create low level structures.
-def char(c):
-    # 1 byte character
-    c = struct.pack('=c', c.encode('ascii'))
-    return c
-
-def word(w):
-    # 2 bytes character
-    w = struct.pack('=h', w)   
-    return w  
-
-
-def dword(dw):
-    # 4 bytes character
-    dw = struct.pack('=l', dw)   
-    return dw  
-
-def color_select(r, g, b):
-   return bytes([b, g, r])
-
-# Part of SR4: Flat Shading
-def cross(v1, v2):
-    return (
-        v1.y * v2.z - v1.z * v2.y,
-        v1.z * v2.x - v1.x * v2.z,
-        v1.x * v2.y - v1.y * v2.x
-    )
-
-def bounding_box(A, B, C):
-    coords = [(A.x, A.y),(B.x, B.y),(C.x, C.y)]
-
-    xmin = 999999
-    xmax = -999999
-    ymin = 999999
-    ymax = -999999
-
-    for (x, y) in coords:
-        if x < xmin:
-            xmin = x
-        if x > xmax:
-            xmax = x
-        if y < ymin:
-            ymin = y
-        if y > ymax:
-            ymax = y
-    return V3(xmin, ymin), V3(xmax, ymax)
-
-def barycentric(A, B, C, P):
-    
-    cx, cy, cz = cross(
-        V3(B.x - A.x, C.x - A.x, A.x - P.x),
-        V3(B.y - A.y, C.y - A.y, A.y - P.y)
-    )
-    if cz == 0:
-        return(-1, -1, -1)
-    u = cx / cz
-    v = cy / cz
-    w = 1 - (u + v) 
-
-    return (w, v, u)
-
-# Class of type Render that will nest every function that will create a BMP file from scratch. 
+from Texture import *
+from Vector import *
+from Obj import *
+from lib import *
+from Matrix import *
+from math import *
 
 class Render(object):
-    def __init__(self):
-        self.width = 0
-        self.height = 0
-        self.pixels = 0
-        self.clearColor = color_select(0, 0, 0)
-        self.viewport_x = 0 
-        self.viewport_y = 0
-        self.viewport_height = 0
-        self.viewport_width = 0
-        self.texture = None
-        
-        # Constants for BMP files
-        self.FILE_SIZE = (54)
-        self.PIXEL_COUNT = 3
-        self.PLANE = 1
-        self.BITS_PER_PIXEL = 24
-        self.DIB_HEADER = 40
-        
-    '''
-    --- SR1: POINTS
-  
-    '''      
-    def glCreateWindow(self, width, height):
+    def __init__(self, width, height):
         self.width = width
         self.height = height
+        self.clearColor = color_select(0, 0, 0)
+        # Initializes the window on create
+        self.glCreateWindow()
+        self.vertex_buffer_object = []
+        self.active_vertex_array = []
+        self.active_texture = None
+        self.active_shader = None
+        self.Light = V3(0, 0, 1)
+        self.Model = None
+        self.View = None
         
-        self.framebuffer = [[self.clearColor for x in range(self.width)]
-                       for y in range(self.height)]
         
+
+    def loadModelMatrix(self,translate =(0,0,0), scale=(1,1,1), rotate = (0,0,0)):
+        translate = V3(*translate)
+        scale = V3(*scale)
+        rotate = V3(*rotate)
+
+        translation_matrix = Matrix([
+            [1,0,0,translate.x],
+            [0,1,0,translate.y],
+            [0,0,1,translate.z],
+            [0,0,0,1],
+        ])
+
+        scale_matrix = Matrix([
+            [scale.x,0,0,0],
+            [0,scale.y,0,0],
+            [0,0,scale.z,0],
+            [0,0,0,1],
+        ])
+        
+        a = rotate.x
+        rotation_x = Matrix([
+            [1,0,0,0],
+            [0,cos(a),-sin(a),0],
+            [0,sin(a),cos(a),0],
+            [0,0,0,1],
+        ])
+        a = rotate.y
+        rotation_y = Matrix([
+            [cos(a),0,sin(a),0],
+            [0,1,0,0],
+            [-sin(a),0,cos(a),0],
+            [0,0,0,1],
+        ])
+        a = rotate.z
+        rotation_z = Matrix([
+            [cos(a),-sin(a),0,0],
+            [sin(a),cos(a),0,0],
+            [0,0,1,0],
+            [0,0,0,1],
+        ])
+     
+        rotation_matrix = rotation_x @ rotation_y @ rotation_z
+        
+        self.Model = translation_matrix @ rotation_matrix @ scale_matrix
+        
+
+    def write(self, filename):
+        glFinish(filename, self.width, self.height, self.framebuffer)
+
+    def lookAt(self, eye, center, up):
+        z = (eye - center).norm()
+        x = (up * z).norm()
+        y = (z * x).norm()
+
+        self.loadViewMatrix(x,y,z,center)
+        self.loadProjectionMatrix(eye,center)
+        self.loadViewportMatrix()
+
+    def loadViewMatrix(self, x, y, z, center):
+        Mi = Matrix([
+            [x.x,x.y,x.z,0],
+            [y.x,y.y,y.z,0],
+            [z.x,z.y,z.z,0],
+            [0,0,0,1]
+        ])
+
+        Op = Matrix([
+            [1,0,0,-center.x],
+            [0,1,0,-center.y],
+            [0,0,1,-center.z],
+            [0,0,0,1]
+        ])
+
+        self.View = Mi @ Op
+        
+        
+    def loadProjectionMatrix(self,eye,center):
+        coeff = -1 / (eye.__length__() - center.__length__())
+        self.Projection = Matrix([
+            [1,0,0,0],
+            [0,1,0,0],
+            [0,0,1,0],
+            [0,0,coeff,1],
+        ])
+
+    def loadViewportMatrix(self):
+        x = 0
+        y = 0
+        w = self.width / 2
+        h = self.height / 2
+
+        self.Viewport = Matrix([
+            [w,0,0,x+w],
+            [0,h,0,y+h],
+            [0,0,128,128],
+            [0,0,0,1],
+        ])
+
+
+    def glCreateWindow(self):
+        self.framebuffer = [
+            [self.clearColor for x in range(self.width)]
+            for y in range(self.height)
+        ]
         self.zBuffer = [
             [-9999 for x in range(self.width)]
             for y in range(self.height)
         ]
         
-    def glViewPort(self, x, y, width, height):
-        self.viewport_x = x
-        self.viewport_y = y
-        self.viewport_width = width
-        self.viewport_height = height
-    
-    def glColor(self, r, g, b):
-        self.clearColor = color_select(r, g, b)
-    
-    def glClearColor(self, r, g, b):
-        self.clearColor = color_select(r, g, b)
-        for x in range(self.viewport_x, self.viewport_x + self.viewport_width + 1):
-            for y in range(self.viewport_y, self.viewport_y + self.viewport_height + 1):
-                self.glPoint(x, y)
+    def shader(self, **kwargs):
+        w,u,v = kwargs['bar']
+        Light = kwargs['light']
+        A,B,C = kwargs['vertices']
+        tA, tB, tC = kwargs['texture_coordinates']
+        nA, nB, nC = kwargs['normals']
         
-    def glVertex(self, x, y):
-        if -1 <= x <= 1:
-            if -1 <= y <= 1:
-                pass
-            else:
-                y = 0
-        else:
-            x = 0
-        self.pixel_X = int((x + 1) * self.viewport_width * 1/2 ) + self.viewport_x
-        self.pixel_Y = int((y + 1) * self.viewport_height * 1/2) + self.viewport_y
-        self.glPoint(self.pixel_X,self.pixel_Y)
-        
-    def glClear(self):
-        for x in range(self.viewport_x, self.viewport_x + self.viewport_width + 1):
-            for y in range(self.viewport_y, self.viewport_y + self.viewport_height + 1):
-                self.glPoint(x, y)
-        
-    def glPoint(self, x, y):
-        if(0 < x < self.width and 0 < y < self.height):
-            self.framebuffer[y][x] = self.clearColor
-    
-    
-    
-        
-    '''
-    --- SR2: LINES
-    
-    '''
-    
-    # Line drawing function which implements Bresenham's algorithm
-    def glLine(self, v1, v2):
-        
-        x0 = int((v1.x + 1) * self.viewport_width * 1/2 ) + self.viewport_x
-        y0 = int((v1.y + 1) * self.viewport_height * 1/2) + self.viewport_y
+        iA = nA.norm() @ Light.norm()    
+        iB = nB.norm() @ Light.norm()   
+        iC = nC.norm() @ Light.norm()
 
-        x1 = int((v2.x + 1) * self.viewport_width * 1/2 ) + self.viewport_x
-        y1 = int((v2.y + 1) * self.viewport_height * 1/2) + self.viewport_y
+        i = iA * w + iB * u + iC * v   
+         
 
-        #realizar conversion
-        dy = abs(y1 - y0)
-        dx = abs(x1 - x0)
-
-        steep = dy > dx
-
-        if steep:
-            x0, y0 = y0, x0
-            x1, y1 = y1, x1
-
-        if  x0 > x1:
-            x0, x1 = x1, x0
-            y0, y1 = y1, y0
-
-        dy = abs(y1 - y0)
-        dx = abs(x1 - x0)
-
-        offset = 0
-        
-        threshold = dx
-        
-        y = y0
-
-        for x in range(x0, x1 + 1):
-            if steep:
-                self.glPoint(y, x)
-            else:
-                self.glPoint(x, y)
-
-            offset += dy * 2
-            if offset >= threshold:
-                y += 1 if y0 < y1 else -1
-                threshold += dx * 2
-        
-        
-    '''
-    SR3: MODELS
-    
-    '''
-    
-    def transform_vertex(self, vertex, scale_factor, translate_factor):
-        return V3(
-            (vertex[0] * scale_factor[0]) + translate_factor[0], 
-            (vertex[1] * scale_factor[1]) + translate_factor[1],
-            (vertex[2] * scale_factor[2]) + translate_factor[2]
-        )
-    
-    
-    '''
-    SR4: FLAT SHADING
-    
-    '''
-    
-    def load_model(self, filename, scale_factor, translate_factor):
-        model = Obj(filename)
-        
-        for face in model.faces:
-    
-            if len(face) == 4:
-                f1 = face[0][0] - 1
-                f2 = face[1][0] - 1
-                f3 = face[2][0] - 1
-                f4 = face[3][0] - 1
-
-                v1 = self.transform_vertex(model.vertex[f1], scale_factor, translate_factor)
-                v2 = self.transform_vertex(model.vertex[f2], scale_factor, translate_factor)
-                v3 = self.transform_vertex(model.vertex[f3], scale_factor, translate_factor)
-                v4 = self.transform_vertex(model.vertex[f4], scale_factor, translate_factor)
-
-                if self.texture:
-
-                    ft1 = face[0][1] - 1
-                    ft2 = face[1][1] - 1
-                    ft3 = face[2][1] - 1
-                    ft4 = face[3][1] - 1
-
-                    vt1 = V3(*model.tvertices[ft1])
-                    vt2 = V3(*model.tvertices[ft2])
-                    vt3 = V3(*model.tvertices[ft3])
-                    vt4 = V3(*model.tvertices[ft4])
-
-                    self.triangle_babycenter((v1, v2, v3), (vt1, vt2, vt3))
-                    self.triangle_babycenter((v1, v3, v4), (vt1, vt3, vt4))
-                else:
-                    self.triangle_babycenter((v1, v2, v3))
-                    self.triangle_babycenter((v1, v3, v4))
+        if self.active_texture:
+            tx = tA.x * w +tB.x * u + tC.x * v
+            ty = tA.y * w +tB.y * u + tC.y * v
             
-            if len(face) == 3:
-                f1 = face[0][0] - 1
-                f2 = face[1][0] - 1
-                f3 = face[2][0] - 1
 
-                v1 = self.transform_vertex(model.vertex[f1], scale_factor, translate_factor)
-                v2 = self.transform_vertex(model.vertex[f2], scale_factor, translate_factor)
-                v3 = self.transform_vertex(model.vertex[f3], scale_factor, translate_factor)
-                
-                if self.texture:
+            return self.active_texture.get_color_with_intensity(tx, ty, i)
 
-                    ft1 = face[0][1] - 1
-                    ft2 = face[1][1] - 1
-                    ft3 = face[2][1] - 1
+    def glPoint(self, x, y):
+        if (0 < x < self.width and 0 < y < self.height):
+            self.framebuffer[x][y] = self.clearColor
 
-                    vt1 = V3(*model.tvertices[ft1])
-                    vt2 = V3(*model.tvertices[ft2])
-                    vt3 = V3(*model.tvertices[ft3])
+    def glColor(self, c):
+        self.clearColor = c
 
-                    self.triangle_babycenter((v1, v2, v3), (vt1, vt2, vt3))
-                else:
-                    self.triangle_babycenter((v1, v2, v3))
-    
-    
-    #posicion de la luz
-    def lightPosition(self, x:int, y:int, z:int):
-        self.light = V3(x, y, z)
-    
-    #con zbuffer
-    def triangle_babycenter(self, vertices, tvertices=()):
-        A, B, C = vertices
-        if self.texture:
-            tA, tB, tC = tvertices
+    def line(self, p1,p2):
+        x0 = round(p1.x)
+        y0 = round(p1.y)
+        x1 = round(p2.x)
+        y1 = round(p2.y)
         
-        Light = self.light
-        Normal = (B - A) * (C - A)
-        i = Normal.norm() @ Light.norm()
-        if i < 0:
-            return
+        points = glLine(x0,y0,x1,y1)
+        for point in points:
+            self.glPoint(*point)
 
-        print(i)
-        self.clearColor = color_select(
-            round(255 * i),
-            round(255 * i),
-            round(255 * i)
-        )
+    def triangle_babycenter(self):
+        A = next(self.active_vertex_array)
+        
+        B = next(self.active_vertex_array)
+        
+        C = next(self.active_vertex_array)
+        
 
-        min,max = bounding_box(A, B, C)
-        min.round_coords()
-        max.round_coords()
+        if self.active_texture:
+            tA = next(self.active_vertex_array)
+            tB = next(self.active_vertex_array)
+            tC = next(self.active_vertex_array)
+            
+        if self.active_shader:
+            nA = next(self.active_vertex_array)
+            nB = next(self.active_vertex_array)
+            nC = next(self.active_vertex_array)
+            
+
+        min,max = bounding_box(A,B,C)
+        min.round()
+        max.round()
         
         for x in range(min.x, max.x + 1):
             for y in range(min.y, max.y + 1):
-                w, v, u = barycentric(A, B, C, V3(x, y))
+                w, v, u = barycentric(A, B, C, V3(x,y))
 
                 if (w < 0 or v < 0 or u < 0):
                     continue
 
                 z = A.z * w + B.z * v + C.z * u
-                if (self.zBuffer[x][y] < z):
+                if (x >= 0 and
+                    y >= 0 and
+                    x < len(self.zBuffer) and  
+                    y < len(self.zBuffer[0]) and 
+                    self.zBuffer[x][y] < z):
                     self.zBuffer[x][y] = z
+                    self.clearColor = self.active_shader(
+                        bar = (w, u, v),
+                        vertices=(A, B, C),
+                        texture_coordinates = (tA,tB,tC),
+                        normals = (nA, nB, nC),
+                        light = self.Light,
+                        coorinates = (x, y)
+                        )
+              
+                    self.glPoint(y, x)
 
-                    if self.texture:
-                        tx = tA.x * w + tB.x * u + tC.x * v
-                        ty = tA.y * w + tB.y * u + tC.y * v
+    def triangle_wireframe(self):
+        A = next(self.active_vertex_array)
+        B = next(self.active_vertex_array)
+        C = next(self.active_vertex_array)
 
-                        self.current_color = self.texture.get_color_with_intensity(tx, ty, i)
-                    
-                    self.glPoint(x, y)
-    '''
-    RENDERS FILE
+        if self.active_texture:
+            tA = next(self.active_vertex_array)
+            tB = next(self.active_vertex_array)
+            tC = next(self.active_vertex_array)
+        
+        self.line(A, B)
+        self.line(B, C)
+        self.line(C, A)
     
-    '''
+    def transform_vertex(self, vertex):
+        augmented_vertex = Matrix([
+            vertex[0],
+            vertex[1],
+            vertex[2],
+            1
+        ])
+
+        transformed_vertex =  self.Viewport @ self.Projection @ self.View @ self.Model @ augmented_vertex 
+        
+        transformed_vertex = V3(transformed_vertex)
+
+        return V3(
+            transformed_vertex.x/transformed_vertex.w,
+            transformed_vertex.y/transformed_vertex.w,
+            transformed_vertex.z/transformed_vertex.w,
+        )
+
     
-    def glFinish(self, filename):
-        with open(filename, 'bw') as file:
-            # Header
-            file.write(char('B'))
-            file.write(char('M'))
+    def render_obj(self, obj, translate=(0, 0, 0), scale=(1, 1, 1), rotate=(0, 0, 0)):
+        
+        self.loadModelMatrix(translate, scale, rotate)
+        model = Obj(obj)
 
-            # file size
-            file.write(dword(self.FILE_SIZE + self.height * self.width * self.PIXEL_COUNT))
-            file.write(word(0))
-            file.write(word(0))
-            file.write(dword(self.FILE_SIZE))
-
-            # Info Header
-            file.write(dword(self.DIB_HEADER))
-            file.write(dword(self.width))
-            file.write(dword(self.height))
-            file.write(word(self.PLANE))
-            file.write(word(self.BITS_PER_PIXEL))
-            file.write(dword(0))
-            file.write(dword(self.width * self.height * self.PIXEL_COUNT))
-            file.write(dword(0))
-            file.write(dword(0))
-            file.write(dword(0))
-            file.write(dword(0))
-    
-            # Color table
-            for y in range(self.height):
-                for x in range(self.width):
-                    file.write(self.framebuffer[y][x])
-            file.close()
-            
-            
-
-
-    '''
-    # Function that will implement an algorithm to draw and fill triangles
-    def draw_triangles(self, A, B, C):
-        #self.glLine(A, B)
-        #self.glLine(B, C)
-        #self.glLine(C, A)
-        
-        A.round()
-        B.round()
-        C.round()
-        
-        # Filling triangles
-        if (A.y > B.y):
-            
-            A, B = B, A
-            
-        if (A.y > C.y):
-            
-            A, C = C, A
-            
-        if (B.y > C.y):
-            
-            B, C = C, B
-
-        
-        self.glColor(random.uniform(0, 1), random.uniform(0, 1), random.uniform(0, 1))
-        
-        dx_ac = (C.x -A.x)
-        dy_ac = (C.y - A.y)
-        
-        if (dy_ac == 0):
-            return
-        
-        invslope_ac = dx_ac / dy_ac
-        
-        dx_ab = B.x - A.x
-        dy_ab = B.y - A.y
-        
-        if (dy_ab != 0):
-        
-            invslope_ab = dx_ab / dy_ab
-            
-            for y in range(A.y, B.y + 1):
-                xi = round(A.x - invslope_ac * (A.y - y))
-                xf = round(A.x - invslope_ab * (A.y - y))
+        for face in model.faces:
+            if len(face) == 4:
+                f1 = face[0][0] - 1
+                f2 = face[1][0] - 1
+                f3 = face[2][0] - 1
+                f4 = face[3][0] - 1
+                v1 = self.transform_vertex(model.vertices[f1])
+                v2 = self.transform_vertex(model.vertices[f2])
+                v3 = self.transform_vertex(model.vertices[f3])
+                v4 = self.transform_vertex(model.vertices[f4])
                 
-                if (xi > xf):
-                    xi, xf = xf, xi
-
-                for x in range(xi, xf + 1):
-                    self.glPoint(x, y)
-        
-        dx_bc = C.x - B.x
-        dy_bc = C.y - B.y
-        
-        if (dy_bc != 0):
-            
-            invslope_bc = dx_bc / dy_bc
-                    
-            for y in range(B.y, C.y + 1):
-                xi = round(A.x - invslope_ac * (A.y - y))
-                xf = round(B.x - invslope_bc * (B.y - y))
                 
-                if (xi > xf):
-                    xi, xf = xf, xi
+                self.vertex_buffer_object.append(v1)
+                self.vertex_buffer_object.append(v2)
+                self.vertex_buffer_object.append(v3)
+                
+                if self.active_texture:
 
-                for x in range(xi, xf + 1):
-                    self.glPoint(x, y)
-    
-    '''
+                    ft1 = face[0][1] - 1
+                    ft2 = face[1][1] - 1
+                    ft3 = face[2][1] - 1
+
+                    vt1 = V3(*model.tvertices[ft1])
+                    vt2 = V3(*model.tvertices[ft2])
+                    vt3 = V3(*model.tvertices[ft3])
+
+                    self.vertex_buffer_object.append(vt1)
+                    self.vertex_buffer_object.append(vt2)
+                    self.vertex_buffer_object.append(vt3)
+
+                try:
+                    fn1 = face[0][2] - 1
+                    fn2 = face[1][2] - 1
+                    fn3 = face[2][2] - 1
+
+                    vn1 = V3(*model.nvertices[fn1])
+                    vn2 = V3(*model.nvertices[fn2])
+                    vn3 = V3(*model.nvertices[fn3])
+                
+                    self.vertex_buffer_object.append(vn1)
+                    self.vertex_buffer_object.append(vn2)
+                    self.vertex_buffer_object.append(vn3)
+                except:
+                    pass
+                
+                self.vertex_buffer_object.append(v1)
+                self.vertex_buffer_object.append(v3)
+                self.vertex_buffer_object.append(v4)
+
+                if self.active_texture:
+
+                    ft1 = face[0][1] - 1
+                    ft3 = face[2][1] - 1
+                    ft4 = face[3][1] - 1
+
+                    vt1 = V3(*model.tvertices[ft1])
+                    vt3 = V3(*model.tvertices[ft3])
+                    vt4 = V3(*model.tvertices[ft4])
+
+                    self.vertex_buffer_object.append(vt1)
+                    self.vertex_buffer_object.append(vt3)
+                    self.vertex_buffer_object.append(vt4)
+                try:
+                    fn1 = face[0][2] - 1
+                    fn3 = face[2][2] - 1
+                    fn4 = face[3][2] - 1
+
+                    vn1 = V3(*model.nvertices[fn1])
+                    vn3 = V3(*model.nvertices[fn3])
+                    vn4 = V3(*model.nvertices[fn4])
+                
+                    self.vertex_buffer_object.append(vn1)
+                    self.vertex_buffer_object.append(vn3)
+                    self.vertex_buffer_object.append(vn4)
+                except:
+                    pass
+
+            if len(face) == 3:
+                f1 = face[0][0] - 1
+                f2 = face[1][0] - 1
+                f3 = face[2][0] - 1
+
+                v1 = self.transform_vertex(model.vertices[f1])
+                v2 = self.transform_vertex(model.vertices[f2])
+                v3 = self.transform_vertex(model.vertices[f3])
+
+                self.vertex_buffer_object.append(v1)
+                self.vertex_buffer_object.append(v2)
+                self.vertex_buffer_object.append(v3)
+
+                if self.active_texture:
+
+                    ft1 = face[0][1] - 1
+                    ft2 = face[1][1] - 1
+                    ft3 = face[2][1] - 1
+
+                    vt1 = V3(*model.tvertices[ft1])
+                    vt2 = V3(*model.tvertices[ft2])
+                    vt3 = V3(*model.tvertices[ft3])
+
+                    self.vertex_buffer_object.append(vt1)
+                    self.vertex_buffer_object.append(vt2)
+                    self.vertex_buffer_object.append(vt3)
+                
+                try:
+                    fn1 = face[0][2] - 1
+                    fn2 = face[1][2] - 1
+                    fn3 = face[2][2] - 1
+
+                    vn1 = V3(*model.nvertices[fn1])
+                    vn2 = V3(*model.nvertices[fn2])
+                    vn3 = V3(*model.nvertices[fn3])
+                
+                    self.vertex_buffer_object.append(vn1)
+                    self.vertex_buffer_object.append(vn2)
+                    self.vertex_buffer_object.append(vn3)
+                except:
+                    pass
+
+        self.active_vertex_array = iter(self.vertex_buffer_object)
+
+    def draw(self,polygon):
+        if polygon == 'TRIANGLES':
+            try:
+                while True:
+                    self.triangle_babycenter()
+            except StopIteration:
+                print("FINISHED DRAWING TRIANGLE")
+        if polygon == 'WIREFRAME':
+            try:
+                while True:
+                    self.triangle_wireframe()
+            except StopIteration:
+                print("FINISHED DRAWING WIREFRAME") 
+                

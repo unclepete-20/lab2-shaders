@@ -1,30 +1,21 @@
-from bmp_renderer import Render
-from Vector import V3
+from bmp_renderer import *
+from lib import *
 
-frame = Render()
+pi =3.1416
+                        
 
-scale_factor = (50, 50, 100)
-translate_factor = (400, 200, 0)
+r = Render(500, 500)
+r.glColor(color_select(0, 0, 0))
+r.lookAt(V3(-1,0,5),V3(0,0,0),V3(0,1,0))
 
-frame.glCreateWindow(800, 800)
+#creeper
+scale_factor = (0.5,0.5,1)
+translate_factor = (0, 0, 0)
+rotate_factor = (0,0,0)
+r.active_texture = Texture("creeper.bmp")
+r.active_shader = r.shader
+r.render_obj('Creeper.obj',translate_factor,scale_factor,rotate_factor)
+r.draw('TRIANGLES') 
 
-frame.lightPosition(0, 0, 1)
-    
-frame.load_model('dog.obj', scale_factor, translate_factor)
 
-frame.glFinish('dog.bmp')
-
-'''
-square = [
-    (0.2, 0.2),
-    (0.8, 0.2),
-    (0.8, 0.8),
-    (0.2, 0.8)
-]
-
-last_point = square[-1]
-
-for point in square:
-    frame.glLine(*last_point, *point)
-    last_point = point
-'''
+r.write('sr5.bmp')
