@@ -4,6 +4,7 @@ from Obj import *
 from lib import *
 from Matrix import *
 from math import *
+import random
 
 class Render(object):
     def __init__(self, width, height):
@@ -389,4 +390,141 @@ class Render(object):
                     self.triangle_wireframe()
             except StopIteration:
                 print("FINISHED DRAWING WIREFRAME") 
+    
+    def mars(self, **kwargs):
+        x, y = kwargs['coorinates']
+        
+        if y > 760 - random.randint(0, 50) and x > 500 - random.randint(0, 50) and x < 550 + random.randint(0, 50):
+            return color_select(200, 90, 100)
+        elif x < 500 + random.randint(0, 50):
+            if x > 300- random.randint(0, 50) and x < 450 + random.randint(0, 50):
+                if 450 - random.randint(0, 50) < y < 450 + random.randint(0, 50):
+                    return color_select(230, 100, 128)
+                elif 400 - random.randint(0, 50) < x < 450 + random.randint(0, 50):
+                    if 400 - random.randint(0, 50) < y < 450 + random.randint(0, 50):
+                        return color_select(230, 200, 200)
+                if x > 350 - random.randint(0, 50):
+                    if 600 - random.randint(0, 50) < y < 650 + random.randint(0, 50):
+                        return color_select(254, 112, 128)
+            return color_select(200, 90, 100)
+        elif y < 250 + random.randint(0, 50) and x > 500 - random.randint(0, 50) and x < 550 + random.randint(0, 50):
+            return color_select(225, 90, 100)
+            
+        elif x >= 450:
+            i = (x - 450) * 0.2
+            r = 200 - i 
+            g = 90 - i
+            b = 100 - i
+            
+            if 500 - random.randint(0, 50) < x < 600 + random.randint(0, 50):
+                if 400 - random.randint(0, 50)< y < 550 + random.randint(0, 50):
+                    return color_select(230, 78, 80)
+            if 680 - random.randint(0, 50) < x < 700 + random.randint(0, 50):
+                if 400 - random.randint(0, 50)< y < 650 + random.randint(0, 50):
+                    return color_select(190, 38, 58)
                 
+            if 0 <= r <= 255:
+                pass
+            else:
+                r = 0
+            if 0 <= g <= 255:
+                pass
+            else:
+                g = 0
+            if 0 <= b<= 255:
+                pass
+            else:
+                b = 0
+            return color_select(r, g, b)
+    
+    def phobos(self, **kwargs):
+        x, y = kwargs['coorinates']
+        
+        if y > 760 - random.randint(0, 50) and x > 500 - random.randint(0, 50) and x < 550 + random.randint(0, 50):
+            return color_select(128, 128, 128)
+        elif x < 500 + random.randint(0, 50):
+            if x > 300- random.randint(0, 50) and x < 450 + random.randint(0, 50):
+                if 450 - random.randint(0, 50) < y < 450 + random.randint(0, 50):
+                    return color_select(128, 128, 128)
+                elif 400 - random.randint(0, 50) < x < 450 + random.randint(0, 50):
+                    if 400 - random.randint(0, 50) < y < 450 + random.randint(0, 50):
+                        return color_select(128, 128, 128)
+                if x > 350 - random.randint(0, 50):
+                    if 600 - random.randint(0, 50) < y < 650 + random.randint(0, 50):
+                        return color_select(128, 128, 128)
+            return color_select(128, 128, 128)
+        elif y < 250 + random.randint(0, 50) and x > 500 - random.randint(0, 50) and x < 550 + random.randint(0, 50):
+            return color_select(128, 128, 128)
+            
+        elif x >= 450:
+            i = (x - 450) * 0.2
+            r = 128 - i 
+            g = 90 - i
+            b = 128 - i
+            
+            if 500 - random.randint(0, 50) < x < 600 + random.randint(0, 50):
+                if 400 - random.randint(0, 50)< y < 550 + random.randint(0, 50):
+                    return color_select(128, 128, 128)
+            if 680 - random.randint(0, 50) < x < 700 + random.randint(0, 50):
+                if 400 - random.randint(0, 50)< y < 650 + random.randint(0, 50):
+                    return color_select(128, 128, 128)
+                
+            if 0 <= r <= 255:
+                pass
+            else:
+                r = 0
+            if 0 <= g <= 255:
+                pass
+            else:
+                g = 0
+            if 0 <= b<= 255:
+                pass
+            else:
+                b = 0
+            return color_select(r, g, b)
+    
+    def deimos(self, **kwargs):
+        x, y = kwargs['coorinates']
+        
+        if y > 760 - random.randint(0, 50) and x > 500 - random.randint(0, 50) and x < 550 + random.randint(0, 50):
+            return color_select(150, 75, 0)
+        elif x < 500 + random.randint(0, 50):
+            if x > 300- random.randint(0, 50) and x < 450 + random.randint(0, 50):
+                if 450 - random.randint(0, 50) < y < 450 + random.randint(0, 50):
+                    return color_select(150, 75, 0)
+                elif 400 - random.randint(0, 50) < x < 450 + random.randint(0, 50):
+                    if 400 - random.randint(0, 50) < y < 450 + random.randint(0, 50):
+                        return color_select(150, 75, 0)
+                if x > 350 - random.randint(0, 50):
+                    if 600 - random.randint(0, 50) < y < 650 + random.randint(0, 50):
+                        return color_select(150, 75, 0)
+            return color_select(150, 75, 0)
+        elif y < 250 + random.randint(0, 50) and x > 500 - random.randint(0, 50) and x < 550 + random.randint(0, 50):
+            return color_select(150, 75, 0)
+            
+        elif x >= 450:
+            i = (x - 450) * 0.2
+            r = 150 - i 
+            g = 75 - i
+            b = 1 - i
+            
+            if 500 - random.randint(0, 50) < x < 600 + random.randint(0, 50):
+                if 400 - random.randint(0, 50)< y < 550 + random.randint(0, 50):
+                    return color_select(150, 75, 0)
+            if 680 - random.randint(0, 50) < x < 700 + random.randint(0, 50):
+                if 400 - random.randint(0, 50)< y < 650 + random.randint(0, 50):
+                    return color_select(150, 75, 0)
+                
+            if 0 <= r <= 255:
+                pass
+            else:
+                r = 0
+            if 0 <= g <= 255:
+                pass
+            else:
+                g = 0
+            if 0 <= b<= 255:
+                pass
+            else:
+                b = 0
+            return color_select(r, g, b)       
